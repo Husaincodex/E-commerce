@@ -1,4 +1,3 @@
-
 name: E-commerce CI/CD Deployment
 
 on:
@@ -42,21 +41,34 @@ jobs:
         working-directory: backend
         run: npm ci
 
-      # 6. Configure SSH
+     
+      # Configure SSH using Base64 private key
       - name: Configure SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
-
-      - name: Add EC2 to Known Hosts
+        env:
+          EC2_SSH_KEY_B64: ${{ secrets.EC2_SSH_KEY_B64 }}
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s' "$EC2_SSH_KEY_B64" | base64 --decode > ~/.ssh/ec2_deploy_key
+
+          chmod 600 ~/.ssh/ec2_deploy_key
+
+          ssh-keygen -y -f ~/.ssh/ec2_deploy_key > /dev/null
+
+          echo "SSH private key validated successfully"
+
+      # Add EC2 host
+      - name: Add EC2 to Known Hosts
+        run: |
           ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
 
       # 7. Create deployment directories
       - name: Prepare EC2 Directories
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+          ssh -i ~/.ssh/ec2_deploy_key -o IdentitiesOnly=yes \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
             "mkdir -p /var/www/ecommerce /home/ec2-user/ecommerce-backend"
 
       # 8. Deploy frontend
@@ -72,6 +84,7 @@ jobs:
           fi
 
           rsync -avz --delete \
+            -e "ssh -i ~/.ssh/ec2_deploy_key -o IdentitiesOnly=yes" \
             "$BUILD_DIR/" \
             ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/var/www/ecommerce/
 
@@ -81,17 +94,17 @@ jobs:
           rsync -avz --delete \
             --exclude='.env' \
             --exclude='node_modules' \
+            -e "ssh -i ~/.ssh/ec2_deploy_key -o IdentitiesOnly=yes" \
             backend/ \
             ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/ec2-user/ecommerce-backend/
 
       # 10. Install production dependencies and restart backend
       - name: Restart Backend on EC2
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          ssh -i ~/.ssh/ec2_deploy_key -o IdentitiesOnly=yes \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             set -e
-
             cd /home/ec2-user/ecommerce-backend
-
             npm ci --omit=dev
 
             if pm2 describe ecommerce-backend >/dev/null 2>&1; then
@@ -101,10 +114,7 @@ jobs:
             fi
 
             pm2 save
-
-            echo "Backend deployment completed successfully"
           EOF
-
       # 11. Deployment completed
       - name: Deployment Success
         run: echo "E-commerce application deployed successfully to AWS EC2"
