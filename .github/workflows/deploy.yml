@@ -91,7 +91,7 @@ jobs:
       # 9. Deploy backend
       - name: Deploy Backend
         run: |
-          rsync -rlvz --delete \
+         rsync -rlvz --delete \
             --no-owner \
             --no-group \
             --no-perms \
