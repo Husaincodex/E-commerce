@@ -91,12 +91,16 @@ jobs:
       # 9. Deploy backend
       - name: Deploy Backend
         run: |
-          rsync -avz --delete \
+          rsync -rlvz --delete \
+            --no-owner \
+            --no-group \
+            --no-perms \
+            --omit-dir-times \
             --exclude='.env' \
             --exclude='node_modules' \
             -e "ssh -i ~/.ssh/ec2_deploy_key -o IdentitiesOnly=yes" \
             backend/ \
-            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/ec2-user/ecommerce-backend/
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:ecommerce-backend/
 
       # 10. Install production dependencies and restart backend
       - name: Restart Backend on EC2
